@@ -41,9 +41,12 @@ class Program
      */
     static void Main(string[] args)
     {
-        // とりあえず、ログの保存場所をプログラム内に直接書いておきます。
-        // 将来的にはこれをsettings.iniから読み込むように変更。
-        string logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "log");
+        // 設定ファイルを読み込みます
+        var settings = new SettingsManager("settings.ini");
+        settings.Load();
+
+        // SettingsManagerからログの保存場所を取得します
+        string logPath = settings.LogDirectory;
 
         _monitor = new ActivityMonitor(logPath);
 

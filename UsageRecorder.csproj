@@ -6,7 +6,7 @@
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.1.0</VersionPrefix>
+        <VersionPrefix>1.2.0</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
