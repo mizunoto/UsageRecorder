@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 /**
  * @class ActivityMonitor
@@ -29,6 +30,16 @@ public class ActivityMonitor : IDisposable
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO
+    {
+        public uint cbSize;
+        public uint dwTime;
+    }
+
     private const uint EVENT_SYSTEM_FOREGROUND = 3;
     private const uint WINEVENT_OUTOFCONTEXT = 0;
 
@@ -36,6 +47,11 @@ public class ActivityMonitor : IDisposable
     private IntPtr _hook;
     private WinEventDelegate _delegate; // デリゲートをフィールドとして保持し、ガベージコレクションを防ぎます
     private string _lastWindowTitle = string.Empty;
+
+    private Timer _idleCheckTimer;
+    private bool _isIdle = false;
+    // アイドル状態と判断するまでの時間（ミリ秒）。ここでは5分に設定しています。
+    private const int IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
     /**
      * @brief コンストラクタ
@@ -61,6 +77,9 @@ public class ActivityMonitor : IDisposable
 
         // ウィンドウイベントのフックを設定
         _hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _delegate, 0, 0, WINEVENT_OUTOFCONTEXT);
+
+        // 10秒ごとにアイドル状態をチェックするタイマーを開始します。
+        _idleCheckTimer = new Timer(CheckIdleState, null, 0, 10000);
 
         LogActivity("Application Started");
         // 開始直後のアクティブウィンドウも記録します
@@ -93,7 +112,53 @@ public class ActivityMonitor : IDisposable
      */
     private void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
+
+        // ユーザーの操作があったということなので、アイドル状態から復帰したかチェックします。
+        CheckIdleState(null);
         LogCurrentActiveWindow();
+    }
+
+    /**
+     * @brief ユーザーのアイドル状態を定期的にチェックします。
+     */
+    private void CheckIdleState(object state)
+    {
+        uint idleTime = GetIdleTime();
+
+        // 現在アイドル状態かどうか
+        bool currentlyIdle = idleTime > IDLE_THRESHOLD_MS;
+
+        if (_isIdle != currentlyIdle)
+        {
+            // 状態が変化した時だけログに記録します
+            _isIdle = currentlyIdle;
+            LogActivity(_isIdle ? "Idle Start" : "Idle End");
+
+            // アイドルから復帰した直後は、現在のアクティブウィンドウも記録しておくと分かりやすいです。
+            if (!_isIdle)
+            {
+                LogCurrentActiveWindow();
+            }
+        }
+    }
+
+    /**
+     * @brief 最後のユーザー入力からの経過時間をミリ秒単位で取得します。
+     * @return 経過時間 (ミリ秒)
+     */
+    private static uint GetIdleTime()
+    {
+        LASTINPUTINFO lastInputInfo = new LASTINPUTINFO();
+        lastInputInfo.cbSize = (uint)Marshal.SizeOf(lastInputInfo);
+
+        if (!GetLastInputInfo(ref lastInputInfo))
+        {
+            return 0;
+        }
+
+        // Environment.TickCountはOS起動からの経過ミリ秒。GetLastInputInfoのdwTimeも同様。
+        // これらは周回することがある(約49.7日で0に戻る)ので、差分を取ることでその影響を回避します。
+        return (uint)Environment.TickCount - lastInputInfo.dwTime;
     }
 
     /**
