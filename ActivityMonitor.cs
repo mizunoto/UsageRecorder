@@ -119,7 +119,7 @@ public class ActivityMonitor : IDisposable
      * @brief 指定されたメッセージをCSV形式でログファイルに記録します。
      * @param message 記録するメッセージ（ウィンドウタイトルなど）
      */
-    private void LogActivity(string message)
+    public void LogActivity(string message) // ← private から public に変更
     {
         try
         {
@@ -136,8 +136,6 @@ public class ActivityMonitor : IDisposable
         }
         catch (Exception ex)
         {
-            // エラーが発生した場合はコンソールに出力します。
-            // 実際のアプリケーションでは、より高度なエラー処理を検討。
             Console.WriteLine($"[ERROR] Failed to write log: {ex.Message}");
         }
     }

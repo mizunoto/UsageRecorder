@@ -2,6 +2,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 /**
@@ -13,6 +14,26 @@ class Program
     private static ActivityMonitor _monitor;
     // プログラムが終了シグナルを受け取るまで待機するための仕組みです。
     private static readonly ManualResetEvent _exitEvent = new ManualResetEvent(false);
+
+    // Windowsからの制御信号を処理するためのデリゲートとAPIの宣言です
+    [DllImport("Kernel32")]
+    private static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
+
+    // コールバックメソッドの型を定義します
+    private delegate bool HandlerRoutine(CtrlType sig);
+
+    // 制御信号の種類を定義する列挙型です
+    private enum CtrlType
+    {
+        CTRL_C_EVENT = 0,
+        CTRL_BREAK_EVENT = 1,
+        CTRL_CLOSE_EVENT = 2,
+        CTRL_LOGOFF_EVENT = 5,
+        CTRL_SHUTDOWN_EVENT = 6
+    }
+
+    // デリゲートのインスタンスをフィールドとして保持し、ガベージコレクションを防ぎます
+    private static HandlerRoutine _handler;
 
     /**
      * @brief アプリケーションのメインエントリーポイントです。
@@ -26,10 +47,10 @@ class Program
 
         _monitor = new ActivityMonitor(logPath);
 
-        // プログラムが終了する時(×ボタンで閉じるなど)の処理を登録
-        AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
-        // Ctrl+Cが押された時の処理を登録
-        Console.CancelKeyPress += OnCancelKeyPress;
+        // Windowsからの制御信号(シャットダウン、ログオフなど)を補足するハンドラを登録します。
+        // これにより、単にウィンドウを閉じた時だけでなく、OSからの終了命令も検知できるようになります。
+        _handler = new HandlerRoutine(ConsoleCtrlCheck);
+        SetConsoleCtrlHandler(_handler, true);
 
         // 監視を開始
         _monitor.Start();
@@ -47,22 +68,42 @@ class Program
     }
 
     /**
-     * @brief プロセスが終了する際に呼び出されるイベントハンドラです。
+     * @brief Windowsから制御信号を受け取った際に呼び出されるコールバックメソッドです。
+     * @param signalType 受け取った信号の種類
+     * @return イベントを処理した場合はtrue、そうでなければfalse
      */
-    private static void OnProcessExit(object sender, EventArgs e)
+    private static bool ConsoleCtrlCheck(CtrlType signalType)
     {
-        // 予期せずプログラムが終了した場合でも、きちんと後片付けができるようにします。
-        _monitor?.Dispose();
-    }
+        string logMessage = string.Empty;
 
-    /**
-     * @brief Ctrl+Cが押された際に呼び出されるイベントハンドラです。
-     */
-    private static void OnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
-    {
-        // デフォルトの動作(プロセス終了)をキャンセルして、自分で終了処理を行う
-        e.Cancel = true;
-        // Mainメソッドの待機を解除するためのシグナルを送ります
-        _exitEvent.Set();
+        switch (signalType)
+        {
+            case CtrlType.CTRL_C_EVENT:
+            case CtrlType.CTRL_BREAK_EVENT:
+            case CtrlType.CTRL_CLOSE_EVENT:
+                logMessage = "Application Terminated by User";
+                break;
+            case CtrlType.CTRL_LOGOFF_EVENT:
+                logMessage = "System Logoff";
+                break;
+            case CtrlType.CTRL_SHUTDOWN_EVENT:
+                logMessage = "System Shutdown";
+                break;
+        }
+
+        if (!string.IsNullOrEmpty(logMessage))
+        {
+            Console.WriteLine($"終了シグナル受信: {signalType}");
+            _monitor.LogActivity(logMessage); // 終了理由をログに記録
+
+            // 少し待機時間を設けることで、ファイルへの書き込みが完了するのを待ちます。
+            // シャットダウン時はシステムがすぐにプロセスを終了させようとするためだよ。
+            Thread.Sleep(1000);
+
+            _exitEvent.Set(); // Mainスレッドの待機を解除して、クリーンアップ処理に進ませる
+        }
+
+        // trueを返すことで、このイベントを処理したことをOSに伝えます
+        return true;
     }
 }
