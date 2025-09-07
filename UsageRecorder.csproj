@@ -12,7 +12,7 @@
         -->
 
         <!-- バージョン情報 -->
-        <VersionPrefix>1.5.5</VersionPrefix>
+        <VersionPrefix>1.5.6</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <VersionString>$(VersionPrefix)</VersionString>
 
@@ -54,7 +54,7 @@
         <PropertyGroup>
             <PublishedExePath>
                 bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\$(MSBuildProjectName).exe</PublishedExePath>
-            <ZipOutputPath>bin\Release\$(MSBuildProjectName)_v$(VersionString).zip</ZipOutputPath>
+            <ZipOutputPath>bin\Release\zip\$(MSBuildProjectName)_v$(VersionString).zip</ZipOutputPath>
         </PropertyGroup>
         <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ZipOutputPath)"
             Overwrite="true" />
