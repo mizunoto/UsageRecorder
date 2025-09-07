@@ -6,26 +6,36 @@
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.5.2</VersionPrefix>
+        <VersionPrefix>1.5.3</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
-        <Version>$(VersionPrefix)$()</Version>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
         -->
-        <AssemblyName>$(MSBuildProjectName)-v$(Version)</AssemblyName>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
         <SelfContained>false</SelfContained>
         <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
 
-    <Target Name="Build" AfterTargets="Build">
+    <Target Name="BuildApp">
         <!-- $dotnet msbuild -t:Build -->
-        <Exec Command="dotnet publish" />
+        <Exec Command="dotnet publish -c Debug" />
     </Target>
-    <Target Name="Release" AfterTargets="Build">
+    <Target Name="ReleaseApp">
         <!-- $dotnet msbuild -t:Release -->
         <Exec Command="dotnet publish -c Release" />
+    </Target>
+
+    <PropertyGroup>
+        <PublishedExePath>
+            bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\$(AssemblyName).exe</PublishedExePath>
+        <ZipOutputPath>bin\Release\$(AssemblyName).zip</ZipOutputPath>
+    </PropertyGroup>
+
+    <Target Name="ZipRelease" AfterTargets="ReleaseApp">
+        <Exec
+            Command="powershell -Command &quot;Compress-Archive -Path '$(PublishedExePath)' -DestinationPath '$(ZipOutputPath)' -Force&quot;" />
+        <Message Text="Successfully published and zipped to $(ZipOutputPath)" Importance="high" />
     </Target>
 
     <ItemGroup>
