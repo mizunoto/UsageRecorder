@@ -12,9 +12,8 @@
         -->
 
         <!-- バージョン情報 -->
-        <VersionPrefix>1.5.6</VersionPrefix>
+        <VersionPrefix>1.6.0</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
-        <VersionString>$(VersionPrefix)</VersionString>
 
         <!-- Publish設定 -->
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -23,23 +22,31 @@
         <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
 
-    <!-- バージョン文字列変数 -->
+    <!-- バージョン文字列を生成 -->
+    <PropertyGroup>
+        <VersionString>$(VersionPrefix)</VersionString>
+    </PropertyGroup>
     <PropertyGroup Condition="'$(VersionSuffix)' != ''">
         <VersionString>$(VersionPrefix)-$(VersionSuffix)</VersionString>
     </PropertyGroup>
 
-    <!-- ビルド構成 -->
-    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-        <AssemblyName>$(MSBuildProjectName)_v$(VersionString)</AssemblyName>
+    <PropertyGroup>
+        <!-- デフォルト(Release)では、サフィックスは空 -->
+        <FileNameSuffix></FileNameSuffix>
     </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-        <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' AND '$(VersionPrefix)' != '' ">
+        <!-- Debug構成の時だけ、サフィックスにバージョン文字列を設定 -->
+        <FileNameSuffix>_v$(VersionString)</FileNameSuffix>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <AssemblyName>$(MSBuildProjectName)$(FileNameSuffix)</AssemblyName>
     </PropertyGroup>
 
     <!-- ビルドターゲット -->
     <Target Name="BuildApp">
         <!-- $dotnet msbuild -t:BuildApp -->
-        <Exec Command="dotnet publish -c Debug" />
+        <Exec Command="dotnet publish -p:Configuration=Debug" />
         <Message Text="Successfully published Debug build: $(AssemblyName).exe" Importance="high" />
     </Target>
 
@@ -47,7 +54,7 @@
     <!-- $dotnet msbuild -t:ReleaseApp -->
     <Target Name="_DoPublish">
         <Message Text="Step 1/2: Publishing Release build..." Importance="high" />
-        <Exec Command="dotnet publish -c Release" />
+        <Exec Command="dotnet publish -p:Configuration=Release" />
     </Target>
     <Target Name="_DoZip">
         <Message Text="Step 2/2: Zipping the published file..." Importance="high" />
@@ -56,8 +63,8 @@
                 bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\$(MSBuildProjectName).exe</PublishedExePath>
             <ZipOutputPath>bin\Release\zip\$(MSBuildProjectName)_v$(VersionString).zip</ZipOutputPath>
         </PropertyGroup>
-        <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ZipOutputPath)"
-            Overwrite="true" />
+        <ZipDirectory SourceDirectory="bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\"
+            DestinationFile="$(ZipOutputPath)" Overwrite="true" />
         <Message Text="Successfully published Release build and zipped to $(ZipOutputPath)"
             Importance="high" />
     </Target>

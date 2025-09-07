@@ -4,9 +4,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
-// Windows Formsの機能を使うためにusingを追加
-using System.Windows.Forms;
+using System.Windows.Forms; // ApplicationContext を使うために必要です
 
 /**
  * @class ActivityMonitor
@@ -14,24 +12,16 @@ using System.Windows.Forms;
  */
 public class ActivityMonitor : IDisposable
 {
-    // ... (Win32 APIの定義は変更ありません) ...
+    // Win32 API定義と、その他のフィールドは変更ありません
     private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc, WinEventDelegate lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-    [DllImport("user32.dll")]
-    private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
-    [StructLayout(LayoutKind.Sequential)]
-    private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
-
+    [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint eventMin, uint max, IntPtr mod, WinEventDelegate proc, uint idProcess, uint idThread, uint flags);
+    [DllImport("user32.dll")] private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder str, int maxCount);
+    [DllImport("user32.dll")] private static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
+    [StructLayout(LayoutKind.Sequential)] private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
     private const uint EVENT_SYSTEM_FOREGROUND = 3;
     private const uint WINEVENT_OUTOFCONTEXT = 0;
-
     private readonly string _logDirectory;
     private IntPtr _hook;
     private WinEventDelegate _delegate;
@@ -40,23 +30,16 @@ public class ActivityMonitor : IDisposable
     private bool _isIdle = false;
     private const int IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
+    // ApplicationContextが、ウィンドウなしでメッセージループを動かすための心臓部です
+    private ApplicationContext _context;
 
-    // 非表示のフォームをメッセージループのホストとして使用します
-    private HiddenForm _hostForm;
-
-    /**
-     * @brief コンストラクタ
-     * @param logDirectory ログファイルを保存するディレクトリのパス
-     */
     public ActivityMonitor(string logDirectory)
     {
         _logDirectory = logDirectory;
+        // ガベージコレクションでデリゲートが解放されないように、フィールドに保持します
         _delegate = new WinEventDelegate(WinEventProc);
     }
 
-    /**
-     * @brief 監視処理を開始し、メッセージループを実行します。プログラムはここで待機状態になります。
-     */
     public void Run()
     {
         if (!Directory.Exists(_logDirectory))
@@ -64,10 +47,10 @@ public class ActivityMonitor : IDisposable
             Directory.CreateDirectory(_logDirectory);
         }
 
-        _hostForm = new HiddenForm();
-        _hostForm.FormClosing += OnFormClosing;
+        // OSのシャットダウンやログオフを検知するためのイベントハンドラを登録します
+        Application.ApplicationExit += OnApplicationExit;
 
-        // ウィンドウイベントのフックを設定
+        // ウィンドウイベントのフックを開始
         _hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _delegate, 0, 0, WINEVENT_OUTOFCONTEXT);
 
         _idleCheckTimer = new System.Threading.Timer(CheckIdleState, null, 0, 10000);
@@ -75,65 +58,39 @@ public class ActivityMonitor : IDisposable
         LogActivity("Application Started");
         LogCurrentActiveWindow();
 
-        // Application.Runにフォームインスタンスを渡してメッセージループを開始します
-        Application.Run(_hostForm);
+        // ApplicationContextを使って、ウィンドウなしのメッセージループを開始します。
+        // これで、Alt+Tabにウィンドウが表示されることは二度とありません。
+        _context = new ApplicationContext();
+        Application.Run(_context);
     }
 
-    /**
-     * @class HiddenForm
-     * @brief 画面に表示されない、バックグラウンド処理用の隠しフォームです。
-     */
-    private class HiddenForm : Form
+    private void OnApplicationExit(object sender, EventArgs e)
     {
-        public HiddenForm()
-        {
-            // フォームが画面に表示されないように設定します
-            this.WindowState = FormWindowState.Minimized;
-            this.ShowInTaskbar = false;
-            this.Load += (s, e) => this.Size = new System.Drawing.Size(0, 0);
-        }
+        // OSからの終了命令でここが呼ばれます
+        StopAndDispose();
     }
 
-    /**
-     * @brief フォームが閉じられる際に呼び出されるイベントハンドラです。
-     *        OSのシャットダウンやタスクマネージャーからの終了命令を捕捉します。
-     */
-    private void OnFormClosing(object sender, FormClosingEventArgs e)
-    {
-        // 終了処理を実行
-        Stop();
-    }
-
-    /**
-     * @brief ウィンドウの監視を停止します。
-     */
-    private void Stop()
+    private void StopAndDispose()
     {
         if (_hook != IntPtr.Zero)
         {
+            UnhookWinEvent(_hook);
+            _hook = IntPtr.Zero;
+
             if (_isIdle)
             {
                 LogActivity("Idle End");
             }
-            // Application.ApplicationExitイベントはOSシャットダウン時に発生するので、
-            // ここで記録するメッセージをより具体的にします。
-            LogActivity("System Shutdown or Logoff");
-
-            UnhookWinEvent(_hook);
-            _hook = IntPtr.Zero;
+            LogActivity("Application Ended");
         }
 
-        _idleCheckTimer?.Change(Timeout.Infinite, 0);
+        _idleCheckTimer?.Dispose();
+        _context?.Dispose();
     }
 
-    /**
-     * @brief リソースを解放します。
-     */
     public void Dispose()
     {
-        Stop();
-        _idleCheckTimer?.Dispose();
-        _hostForm?.Dispose();
+        StopAndDispose();
     }
 
     // ... (WinEventProc, CheckIdleState, GetIdleTime, LogCurrentActiveWindow, LogActivityメソッドは変更ありません) ...
