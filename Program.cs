@@ -6,11 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.CommandLine;
-using System.CommandLine.NamingConventionBinder;
 using System.CommandLine.Parsing;
-using System.Reflection.Metadata.Ecma335;
-using System.CommandLine.Invocation;
-
 
 /**
  * @class Program
@@ -19,60 +15,60 @@ using System.CommandLine.Invocation;
 class Program
 {
     private static ActivityMonitor _monitor;
-    private static readonly ManualResetEvent _exitEvent = new ManualResetEvent(false);
-
-    [DllImport("Kernel32")]
-    private static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
-    private delegate bool HandlerRoutine(CtrlType sig);
-    private enum CtrlType
-    {
-        CTRL_C_EVENT = 0,
-        CTRL_BREAK_EVENT = 1,
-        CTRL_CLOSE_EVENT = 2,
-        CTRL_LOGOFF_EVENT = 5,
-        CTRL_SHUTDOWN_EVENT = 6
-    }
-    private static HandlerRoutine _handler;
 
     /**
      * @brief アプリケーションのメインエントリーポイントです。
      * @param args コマンドライン引数
-     * @return 終了コード
      */
-    static async Task<int> Main(string[] args)
+    [STAThread] // WinFormsを動かすために必要なおまじないです
+    static void Main(string[] args)
     {
-        // コマンド一覧
-        Option<bool> configOption = new Option<bool>("--config")
+        var configOption = new Option<bool>("--config")
         {
             Description = "設定ファイル(settings.ini)のパスを表示します。"
         };
 
-        RootCommand rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。")
+        var rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。")
         {
             configOption
         };
 
-        rootCommand.SetAction(config =>
+        rootCommand.SetAction((context) =>
         {
-            bool showConfig = config.GetValue(configOption);
+            bool showConfig = context.GetValue(configOption);
+            var settingsManager = new SettingsManager("settings.ini");
+
             if (showConfig)
             {
-                string settingsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
-                Console.WriteLine($"設定ファイルのパス: {settingsFilePath}");
+                // --configが指定された場合、一時的にコンソールを割り当てて表示します
+                AllocConsole(); // コンソールを強制的に表示
+                try
+                {
+                    string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+                    Console.WriteLine($"設定ファイルのパス: {settingsPath}");
+                    Console.WriteLine("\n何かキーを押すと終了します...");
+                    Console.ReadKey(); // ユーザーの入力を待つ
+                }
+                finally
+                {
+                    FreeConsole(); // 表示したコンソールを解放
+                }
             }
             else
             {
-                StartMonitoring(new SettingsManager("settings.ini"));
+                // 通常起動の場合は監視を開始
+                StartMonitoring(settingsManager);
             }
         });
 
         var parser = CommandLineParser.Parse(rootCommand, args);
 
-        return await parser.InvokeAsync();
+        // Mainスレッドで同期的に実行します（非同期にするとすぐに終了してしまうため）
+        parser.Invoke();
     }
 
     /**
-     * @brief アプリケーションの監視処理を開始し、終了シグナルを待機します。
+     * @brief アプリケーションの監視処理を開始します。
      * @param settingsManager 設定を管理するSettingsManagerのインスタンス
      */
     private static void StartMonitoring(SettingsManager settingsManager)
@@ -80,59 +76,53 @@ class Program
         settingsManager.Load();
         string logPath = settingsManager.LogDirectory;
 
-        _monitor = new ActivityMonitor(logPath);
-
-        _handler = new HandlerRoutine(ConsoleCtrlCheck);
-        SetConsoleCtrlHandler(_handler, true);
-
-        _monitor.Start();
-        Console.WriteLine("アクティビティの監視を開始しました。");
-        Console.WriteLine($"ログは '{logPath}' に保存されます。");
-        Console.WriteLine("OSのシャットダウン、またはこのウィンドウを閉じると監視を終了します。");
-
-        _exitEvent.WaitOne();
-
-        Console.WriteLine("監視を終了処理中...");
-        _monitor?.Dispose();
-        Console.WriteLine("監視を終了しました。");
+        try
+        {
+            _monitor = new ActivityMonitor(logPath);
+            // 監視処理の実行
+            _monitor.Run();
+        }
+        catch (Exception ex)
+        {
+            // 予期せぬエラーはファイルに記録します
+            LogWriter.WriteError($"[FATAL] An unhandled exception occurred: {ex}");
+        }
     }
 
+    // Windows APIをインポートして、コンソールを動的に表示/非表示します
+    [DllImport("kernel32.dll")]
+    private static extern bool AllocConsole();
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeConsole();
+}
+
+/**
+ * @class LogWriter
+ * @brief エラーログなどをファイルに書き出すためのシンプルなクラスです。
+ */
+public static class LogWriter
+{
+    private static readonly string _logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app_error.log");
+    private static readonly object _lock = new object();
+
     /**
-     * @brief Windowsから制御信号を受け取った際に呼び出されるコールバックメソッドです。
-     * @param signalType 受け取った信号の種類
-     * @return イベントを処理した場合はtrue、そうでなければfalse
+     * @brief エラーメッセージをログファイルに追記します。
+     * @param message 記録するメッセージ
      */
-    private static bool ConsoleCtrlCheck(CtrlType signalType)
+    public static void WriteError(string message)
     {
-        string logMessage = string.Empty;
-
-        switch (signalType)
+        lock (_lock)
         {
-            case CtrlType.CTRL_C_EVENT:
-            case CtrlType.CTRL_BREAK_EVENT:
-            case CtrlType.CTRL_CLOSE_EVENT:
-                logMessage = "Application Terminated by User";
-                break;
-            case CtrlType.CTRL_LOGOFF_EVENT:
-                logMessage = "System Logoff";
-                break;
-            case CtrlType.CTRL_SHUTDOWN_EVENT:
-                logMessage = "System Shutdown";
-                break;
-        }
-
-        if (!string.IsNullOrEmpty(logMessage))
-        {
-            Console.WriteLine($"終了シグナル受信: {signalType}");
-            if (_monitor != null)
+            try
             {
-                _monitor.LogActivity(logMessage);
-                Thread.Sleep(1000);
+                string logEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {message}{Environment.NewLine}";
+                File.AppendAllText(_logFilePath, logEntry);
             }
-
-            _exitEvent.Set();
+            catch
+            {
+                // 何もしない
+            }
         }
-
-        return true;
     }
 }
