@@ -6,14 +6,22 @@
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.4.2</VersionPrefix>
+        <VersionPrefix>1.4.3</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
         -->
+        <AssemblyName>$(MSBuildProjectName)-v$(VersionPrefix)</AssemblyName>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <PublishSingleFile>true</PublishSingleFile>
+        <SelfContained>false</SelfContained>
     </PropertyGroup>
+    <Target Name="PublishApp" AfterTargets="Build">
+        <Exec Command="dotnet publish" />
+    </Target>
     <ItemGroup>
-      <PackageReference Include="System.CommandLine" Version="2.0.0-beta7.25380.108" />
-      <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta5.25306.1" />
+        <PackageReference Include="System.CommandLine" Version="2.0.0-beta7.25380.108" />
+        <PackageReference Include="System.CommandLine.NamingConventionBinder"
+            Version="2.0.0-beta5.25306.1" />
     </ItemGroup>
 </Project>
