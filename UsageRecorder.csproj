@@ -2,11 +2,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.3.3</VersionPrefix>
+        <VersionPrefix>1.3.4</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
