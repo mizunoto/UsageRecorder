@@ -1,43 +1,68 @@
 <!-- file: UsageRecorder.csproj -->
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+        <!-- 共通メタ情報 -->
         <OutputType>WinExe</OutputType>
         <TargetFramework>net8.0-windows</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.5.4</VersionPrefix>
-        <VersionSuffix>alpha</VersionSuffix>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
         -->
+
+        <!-- バージョン情報 -->
+        <VersionPrefix>1.5.5</VersionPrefix>
+        <VersionSuffix>alpha</VersionSuffix>
+        <VersionString>$(VersionPrefix)</VersionString>
+
+        <!-- Publish設定 -->
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
         <SelfContained>false</SelfContained>
         <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
 
-    <Target Name="BuildApp">
-        <!-- $dotnet msbuild -t:Build -->
-        <Exec Command="dotnet publish -c Debug" />
-    </Target>
-    <Target Name="ReleaseApp">
-        <!-- $dotnet msbuild -t:Release -->
-        <Exec Command="dotnet publish -c Release" />
-    </Target>
-
-    <PropertyGroup>
-        <PublishedExePath>
-            bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\$(AssemblyName).exe</PublishedExePath>
-        <ZipOutputPath>bin\Release\$(AssemblyName).zip</ZipOutputPath>
+    <!-- バージョン文字列変数 -->
+    <PropertyGroup Condition="'$(VersionSuffix)' != ''">
+        <VersionString>$(VersionPrefix)-$(VersionSuffix)</VersionString>
     </PropertyGroup>
 
-    <Target Name="ZipRelease" AfterTargets="ReleaseApp">
-        <Exec
-            Command="powershell -Command &quot;Compress-Archive -Path '$(PublishedExePath)' -DestinationPath '$(ZipOutputPath)' -Force&quot;" />
-        <Message Text="Successfully published and zipped to $(ZipOutputPath)" Importance="high" />
+    <!-- ビルド構成 -->
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+        <AssemblyName>$(MSBuildProjectName)_v$(VersionString)</AssemblyName>
+    </PropertyGroup>
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+        <AssemblyName>$(MSBuildProjectName)</AssemblyName>
+    </PropertyGroup>
+
+    <!-- ビルドターゲット -->
+    <Target Name="BuildApp">
+        <!-- $dotnet msbuild -t:BuildApp -->
+        <Exec Command="dotnet publish -c Debug" />
+        <Message Text="Successfully published Debug build: $(AssemblyName).exe" Importance="high" />
     </Target>
 
+    <Target Name="ReleaseApp" DependsOnTargets="_DoPublish;_DoZip" />
+    <!-- $dotnet msbuild -t:ReleaseApp -->
+    <Target Name="_DoPublish">
+        <Message Text="Step 1/2: Publishing Release build..." Importance="high" />
+        <Exec Command="dotnet publish -c Release" />
+    </Target>
+    <Target Name="_DoZip">
+        <Message Text="Step 2/2: Zipping the published file..." Importance="high" />
+        <PropertyGroup>
+            <PublishedExePath>
+                bin\Release\$(TargetFramework)\$(RuntimeIdentifier)\publish\$(MSBuildProjectName).exe</PublishedExePath>
+            <ZipOutputPath>bin\Release\$(MSBuildProjectName)_v$(VersionString).zip</ZipOutputPath>
+        </PropertyGroup>
+        <ZipDirectory SourceDirectory="$(PublishDir)" DestinationFile="$(ZipOutputPath)"
+            Overwrite="true" />
+        <Message Text="Successfully published Release build and zipped to $(ZipOutputPath)"
+            Importance="high" />
+    </Target>
+
+    <!-- 依存関係 -->
     <ItemGroup>
         <PackageReference Include="System.CommandLine" Version="2.0.0-beta7.25380.108" />
         <PackageReference Include="System.CommandLine.NamingConventionBinder"
