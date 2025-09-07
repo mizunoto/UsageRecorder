@@ -4,6 +4,8 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks; // Taskを使うために追加
+using System.CommandLine; // System.CommandLineライブラリを使うために追加
 
 /**
  * @class Program
@@ -12,17 +14,11 @@ using System.Threading;
 class Program
 {
     private static ActivityMonitor _monitor;
-    // プログラムが終了シグナルを受け取るまで待機するための仕組みです。
     private static readonly ManualResetEvent _exitEvent = new ManualResetEvent(false);
 
-    // Windowsからの制御信号を処理するためのデリゲートとAPIの宣言です
     [DllImport("Kernel32")]
     private static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
-
-    // コールバックメソッドの型を定義します
     private delegate bool HandlerRoutine(CtrlType sig);
-
-    // 制御信号の種類を定義する列挙型です
     private enum CtrlType
     {
         CTRL_C_EVENT = 0,
@@ -31,41 +27,73 @@ class Program
         CTRL_LOGOFF_EVENT = 5,
         CTRL_SHUTDOWN_EVENT = 6
     }
-
-    // デリゲートのインスタンスをフィールドとして保持し、ガベージコレクションを防ぎます
     private static HandlerRoutine _handler;
 
     /**
      * @brief アプリケーションのメインエントリーポイントです。
+     * コマンドライン引数を解析し、適切な処理を呼び出します。
      * @param args コマンドライン引数
+     * @return 終了コード
      */
-    static void Main(string[] args)
+    static async Task<int> Main(string[] args)
     {
-        // 設定ファイルを読み込みます
-        var settings = new SettingsManager("settings.ini");
-        settings.Load();
+        // --- コマンドライン引数の定義 ---
 
-        // SettingsManagerからログの保存場所を取得します
-        string logPath = settings.LogDirectory;
+        // 1. --config オプションを定義します。
+        var configOption = new Option<bool>(
+            name: "--config",
+            description: "設定ファイル(settings.ini)のパスを表示します。");
+
+        // 2. ルートコマンドを定義します。これは引数なしで実行されたときのメインの動作です。
+        var rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。");
+        rootCommand.AddOption(configOption);
+
+        // 3. コマンドが実行されたときの処理を設定します。
+        rootCommand.SetHandler((showConfig) =>
+        {
+            var settingsManager = new SettingsManager("settings.ini");
+
+            if (showConfig)
+            {
+                // --config が指定された場合の処理
+                // 設定ファイルのフルパスを表示します。
+                string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+                Console.WriteLine($"設定ファイルのパス: {settingsPath}");
+            }
+            else
+            {
+                // 引数なしで実行された場合の処理（メインの監視処理）
+                StartMonitoring(settingsManager);
+            }
+        }, configOption);
+
+        // --- コマンドの実行 ---
+        // 引数を解析し、設定されたハンドラを呼び出します。
+        return await rootCommand.InvokeAsync(args);
+    }
+
+    /**
+     * @brief アプリケーションの監視処理を開始し、終了シグナルを待機します。
+     * @param settingsManager 設定を管理するSettingsManagerのインスタンス
+     */
+    private static void StartMonitoring(SettingsManager settingsManager)
+    {
+        settingsManager.Load();
+        string logPath = settingsManager.LogDirectory;
 
         _monitor = new ActivityMonitor(logPath);
 
-        // Windowsからの制御信号(シャットダウン、ログオフなど)を補足するハンドラを登録します。
-        // これにより、単にウィンドウを閉じた時だけでなく、OSからの終了命令も検知できるようになります。
         _handler = new HandlerRoutine(ConsoleCtrlCheck);
         SetConsoleCtrlHandler(_handler, true);
 
-        // 監視を開始
         _monitor.Start();
         Console.WriteLine("アクティビティの監視を開始しました。");
-        Console.WriteLine("このウィンドウを閉じるか、Ctrl+Cを押すと監視を終了します。");
+        Console.WriteLine($"ログは '{logPath}' に保存されます。");
+        Console.WriteLine("OSのシャットダウン、またはこのウィンドウを閉じると監視を終了します。");
 
-        // 終了シグナルが来るまで、ここでプログラムを待機させます。
         _exitEvent.WaitOne();
 
-        // クリーンアップ処理
         Console.WriteLine("監視を終了処理中...");
-        // _monitor?.Dispose() は、もし_monitorがnullでなければDispose()を呼ぶ、という書き方です。
         _monitor?.Dispose();
         Console.WriteLine("監視を終了しました。");
     }
@@ -97,16 +125,15 @@ class Program
         if (!string.IsNullOrEmpty(logMessage))
         {
             Console.WriteLine($"終了シグナル受信: {signalType}");
-            _monitor.LogActivity(logMessage); // 終了理由をログに記録
+            if (_monitor != null)
+            {
+                _monitor.LogActivity(logMessage);
+                Thread.Sleep(1000);
+            }
 
-            // 少し待機時間を設けることで、ファイルへの書き込みが完了するのを待ちます。
-            // シャットダウン時はシステムがすぐにプロセスを終了させようとするためだよ。
-            Thread.Sleep(1000);
-
-            _exitEvent.Set(); // Mainスレッドの待機を解除して、クリーンアップ処理に進ませる
+            _exitEvent.Set();
         }
 
-        // trueを返すことで、このイベントを処理したことをOSに伝えます
         return true;
     }
 }
