@@ -1,19 +1,20 @@
-<!-- file: UsageRecorder.csproj -->
-<Project Sdk="Microsoft.NET.Sdk">
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk" ToolsVersion="15.0"
+    xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <PropertyGroup>
         <!-- 共通メタ情報 -->
         <OutputType>WinExe</OutputType>
+        <RootNamespace>UsageRecorder</RootNamespace>
         <TargetFramework>net8.0-windows</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
-        <RootNamespace>UsageRecorder</RootNamespace>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
         -->
 
         <!-- バージョン情報 -->
-        <VersionPrefix>1.6.0</VersionPrefix>
-        <VersionSuffix>alpha</VersionSuffix>
+        <VersionPrefix>1.6.1</VersionPrefix>
+        <VersionSuffix>beta</VersionSuffix>
 
         <!-- Publish設定 -->
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
