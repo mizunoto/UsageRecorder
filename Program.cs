@@ -4,8 +4,13 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks; // Taskを使うために追加
-using System.CommandLine; // System.CommandLineライブラリを使うために追加
+using System.Threading.Tasks;
+using System.CommandLine;
+using System.CommandLine.NamingConventionBinder;
+using System.CommandLine.Parsing;
+using System.Reflection.Metadata.Ecma335;
+using System.CommandLine.Invocation;
+
 
 /**
  * @class Program
@@ -31,45 +36,39 @@ class Program
 
     /**
      * @brief アプリケーションのメインエントリーポイントです。
-     * コマンドライン引数を解析し、適切な処理を呼び出します。
      * @param args コマンドライン引数
      * @return 終了コード
      */
     static async Task<int> Main(string[] args)
     {
-        // --- コマンドライン引数の定義 ---
-
-        // 1. --config オプションを定義します。
-        var configOption = new Option<bool>(
-            name: "--config",
-            description: "設定ファイル(settings.ini)のパスを表示します。");
-
-        // 2. ルートコマンドを定義します。これは引数なしで実行されたときのメインの動作です。
-        var rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。");
-        rootCommand.AddOption(configOption);
-
-        // 3. コマンドが実行されたときの処理を設定します。
-        rootCommand.SetHandler((showConfig) =>
+        // コマンド一覧
+        Option<bool> configOption = new Option<bool>("--config")
         {
-            var settingsManager = new SettingsManager("settings.ini");
+            Description = "設定ファイル(settings.ini)のパスを表示します。"
+        };
 
+        RootCommand rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。")
+        {
+            configOption
+        };
+
+        rootCommand.SetAction(config =>
+        {
+            bool showConfig = config.GetValue(configOption);
             if (showConfig)
             {
-                // --config が指定された場合の処理
-                // 設定ファイルのフルパスを表示します。
-                string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
-                Console.WriteLine($"設定ファイルのパス: {settingsPath}");
+                string settingsFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+                Console.WriteLine($"設定ファイルのパス: {settingsFilePath}");
             }
             else
             {
-                // 引数なしで実行された場合の処理（メインの監視処理）
-                StartMonitoring(settingsManager);
+                StartMonitoring(new SettingsManager("settings.ini"));
             }
-        }, configOption);
+        });
 
-        // --- コマンドの実行 ---
-        // 引数を解析し、設定されたハンドラを呼び出します。
-        return await rootCommand.InvokeAsync(args);
+        var parser = CommandLineParser.Parse(rootCommand, args);
+
+        return await parser.InvokeAsync();
     }
 
     /**

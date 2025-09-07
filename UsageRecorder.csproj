@@ -6,7 +6,7 @@
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.4.1</VersionPrefix>
+        <VersionPrefix>1.4.2</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
@@ -14,5 +14,6 @@
     </PropertyGroup>
     <ItemGroup>
       <PackageReference Include="System.CommandLine" Version="2.0.0-beta7.25380.108" />
+      <PackageReference Include="System.CommandLine.NamingConventionBinder" Version="2.0.0-beta5.25306.1" />
     </ItemGroup>
 </Project>
