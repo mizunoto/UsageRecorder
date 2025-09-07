@@ -4,9 +4,9 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using System.CommandLine;
 using System.CommandLine.Parsing;
+using System.Reflection;
 
 /**
  * @class Program
@@ -15,6 +15,9 @@ using System.CommandLine.Parsing;
 class Program
 {
     private static ActivityMonitor _monitor;
+    // 2重起動を防止するためのMutexオブジェクト
+    // アプリケーション固有のGUIDなどを名前に使うのが一般的です
+    private static Mutex _mutex = new Mutex(true, "UsageRecorder-mizunoto-app-mutex");
 
     /**
      * @brief アプリケーションのメインエントリーポイントです。
@@ -23,29 +26,51 @@ class Program
     [STAThread] // WinFormsを動かすために必要なおまじないです
     static void Main(string[] args)
     {
+        if (!_mutex.WaitOne(TimeSpan.Zero, true) && args.Length == 0)
+        {
+            // Mutexを取得できず(既に起動している)、かつ引数がない場合は、
+            // 新しいプロセスを何もせずに終了します。
+            return;
+        }
+
         var configOption = new Option<bool>("--config")
         {
             Description = "設定ファイル(settings.ini)のパスを表示します。"
         };
 
+        var versionOption = new Option<bool>("--version")
+        {
+            Aliases = { "-v" },
+            Description = "バージョン情報を表示します。"
+        };
+
         var rootCommand = new RootCommand("PCのアクティビティを監視し、ログに記録するアプリケーションです。")
         {
-            configOption
+            configOption,
+            versionOption
         };
 
         rootCommand.SetAction((context) =>
         {
             bool showConfig = context.GetValue(configOption);
-            var settingsManager = new SettingsManager("settings.ini");
+            bool showVersion = context.GetValue(versionOption);
 
-            if (showConfig)
+            if (showConfig || showVersion)
             {
                 // --configが指定された場合、一時的にコンソールを割り当てて表示します
                 AllocConsole(); // コンソールを強制的に表示
                 try
                 {
-                    string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
-                    Console.WriteLine($"設定ファイルのパス: {settingsPath}");
+                    if (showConfig)
+                    {
+                        string settingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.ini");
+                        Console.WriteLine($"設定ファイルのパス: {settingsPath}");
+                    }
+                    if (showVersion)
+                    {
+                        var version = Assembly.GetExecutingAssembly().GetName().Version;
+                        Console.WriteLine($"UsageRecorder Version: {version?.ToString(3)}");
+                    }
                     Console.WriteLine("\n何かキーを押すと終了します...");
                     Console.ReadKey(); // ユーザーの入力を待つ
                 }
@@ -57,7 +82,7 @@ class Program
             else
             {
                 // 通常起動の場合は監視を開始
-                StartMonitoring(settingsManager);
+                StartMonitoring(new SettingsManager("settings.ini"));
             }
         });
 
@@ -65,6 +90,8 @@ class Program
 
         // Mainスレッドで同期的に実行します（非同期にするとすぐに終了してしまうため）
         parser.Invoke();
+
+        _mutex.ReleaseMutex();
     }
 
     /**
