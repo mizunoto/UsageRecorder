@@ -13,7 +13,7 @@
         -->
 
         <!-- バージョン情報 -->
-        <VersionPrefix>1.6.1</VersionPrefix>
+        <VersionPrefix>1.6.2</VersionPrefix>
         <VersionSuffix>beta</VersionSuffix>
 
         <!-- Publish設定 -->
