@@ -1,22 +1,25 @@
 <!-- file: UsageRecorder.csproj -->
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net8.0-windows</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.4.3</VersionPrefix>
+        <VersionPrefix>1.5.1</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
+        <Version>$(VersionPrefix)$()</Version>
         <!--
         <ApplicationIcon>app.ico</ApplicationIcon>
         -->
-        <AssemblyName>$(MSBuildProjectName)-v$(VersionPrefix)</AssemblyName>
+        <AssemblyName>$(MSBuildProjectName)-v$(Version)</AssemblyName>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
         <PublishSingleFile>true</PublishSingleFile>
         <SelfContained>false</SelfContained>
+        <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
-    <Target Name="PublishApp" AfterTargets="Build">
+    <Target Name="Publish" AfterTargets="Build">
+        <!-- dotnet msbuild -t:Build -->
         <Exec Command="dotnet publish" />
     </Target>
     <ItemGroup>
