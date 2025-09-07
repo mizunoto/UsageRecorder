@@ -40,8 +40,9 @@ public class ActivityMonitor : IDisposable
     private bool _isIdle = false;
     private const int IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
-    // ApplicationContextは、ウィンドウなしでメッセージループを動かすための仕組みです
-    private ApplicationContext _context;
+
+    // 非表示のフォームをメッセージループのホストとして使用します
+    private HiddenForm _hostForm;
 
     /**
      * @brief コンストラクタ
@@ -63,8 +64,8 @@ public class ActivityMonitor : IDisposable
             Directory.CreateDirectory(_logDirectory);
         }
 
-        // OSの終了イベントを検知してクリーンアップ処理を行うように設定
-        Application.ApplicationExit += OnApplicationExit;
+        _hostForm = new HiddenForm();
+        _hostForm.FormClosing += OnFormClosing;
 
         // ウィンドウイベントのフックを設定
         _hook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _delegate, 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -74,18 +75,32 @@ public class ActivityMonitor : IDisposable
         LogActivity("Application Started");
         LogCurrentActiveWindow();
 
-        // Application.Run()でメッセージループを開始します。
-        // これがウィンドウイベントを安定して受信するための鍵だよ。
-        _context = new ApplicationContext();
-        Application.Run(_context);
+        // Application.Runにフォームインスタンスを渡してメッセージループを開始します
+        Application.Run(_hostForm);
     }
 
     /**
-     * @brief アプリケーション終了時に呼び出されるイベントハンドラです。
+     * @class HiddenForm
+     * @brief 画面に表示されない、バックグラウンド処理用の隠しフォームです。
      */
-    private void OnApplicationExit(object sender, EventArgs e)
+    private class HiddenForm : Form
     {
-        // OSからのシャットダウン信号などでここが呼ばれます
+        public HiddenForm()
+        {
+            // フォームが画面に表示されないように設定します
+            this.WindowState = FormWindowState.Minimized;
+            this.ShowInTaskbar = false;
+            this.Load += (s, e) => this.Size = new System.Drawing.Size(0, 0);
+        }
+    }
+
+    /**
+     * @brief フォームが閉じられる際に呼び出されるイベントハンドラです。
+     *        OSのシャットダウンやタスクマネージャーからの終了命令を捕捉します。
+     */
+    private void OnFormClosing(object sender, FormClosingEventArgs e)
+    {
+        // 終了処理を実行
         Stop();
     }
 
@@ -118,7 +133,7 @@ public class ActivityMonitor : IDisposable
     {
         Stop();
         _idleCheckTimer?.Dispose();
-        _context?.Dispose();
+        _hostForm?.Dispose();
     }
 
     // ... (WinEventProc, CheckIdleState, GetIdleTime, LogCurrentActiveWindow, LogActivityメソッドは変更ありません) ...

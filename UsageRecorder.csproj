@@ -6,7 +6,7 @@
         <LangVersion>latest</LangVersion>
         <Authors>mizunoto</Authors>
         <RootNamespace>UsageRecorder</RootNamespace>
-        <VersionPrefix>1.5.1</VersionPrefix>
+        <VersionPrefix>1.5.2</VersionPrefix>
         <VersionSuffix>alpha</VersionSuffix>
         <Version>$(VersionPrefix)$()</Version>
         <!--
@@ -18,10 +18,16 @@
         <SelfContained>false</SelfContained>
         <UseWindowsForms>true</UseWindowsForms>
     </PropertyGroup>
-    <Target Name="Publish" AfterTargets="Build">
-        <!-- dotnet msbuild -t:Build -->
+
+    <Target Name="Build" AfterTargets="Build">
+        <!-- $dotnet msbuild -t:Build -->
         <Exec Command="dotnet publish" />
     </Target>
+    <Target Name="Release" AfterTargets="Build">
+        <!-- $dotnet msbuild -t:Release -->
+        <Exec Command="dotnet publish -c Release" />
+    </Target>
+
     <ItemGroup>
         <PackageReference Include="System.CommandLine" Version="2.0.0-beta7.25380.108" />
         <PackageReference Include="System.CommandLine.NamingConventionBinder"
